@@ -605,6 +605,14 @@ impl hs::State for ExpectCertificate {
             }
         }
 
+        let certv = sess.config
+            .get_verifier()
+            .verify_server_cert(&sess.config.root_store,
+                                &self.server_cert.cert_chain,
+                                self.handshake.dns_name.as_ref(),
+                                &self.server_cert.ocsp_response)
+            .map_err(|err| send_cert_error_alert(sess, err))?;
+
         // branch KEMTLS
         if eecert.is_kem_cert() {
             self.emit_ciphertext(sess, eecert)?;
@@ -781,13 +789,7 @@ impl hs::State for ExpectCertificateVerify {
             return Err(TLSError::NoCertificatesPresented);
         }
 
-        let certv = sess.config
-            .get_verifier()
-            .verify_server_cert(&sess.config.root_store,
-                                &self.server_cert.cert_chain,
-                                self.handshake.dns_name.as_ref(),
-                                &self.server_cert.ocsp_response)
-            .map_err(|err| send_cert_error_alert(sess, err))?;
+        // verifying cert is done on receive
 
         // 2. Verify their signature on the handshake.
         let handshake_hash = self.handshake.transcript.get_current_hash();
