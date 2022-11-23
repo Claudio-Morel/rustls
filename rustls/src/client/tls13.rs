@@ -250,7 +250,7 @@ pub fn start_handshake_traffic(sess: &mut ClientSessionImpl,
     sess.common
         .record_layer
         .set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
-    
+
     handshake.print_runtime("DERIVED HS");
 
     #[cfg(feature = "quic")] {
@@ -549,7 +549,7 @@ impl ExpectCertificate {
         sess.common
             .record_layer
             .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
-        
+
         self.handshake.print_runtime("WRITING TO SERVER");
         sess.common.start_traffic();
 
@@ -585,7 +585,7 @@ impl hs::State for ExpectCertificate {
             sess.common.send_fatal_alert(AlertDescription::UnsupportedExtension);
             return Err(TLSError::PeerMisbehavedError("bad cert chain extensions".to_string()));
         }
-        
+
         let eecert = webpki::EndEntityCert::from(&cert_chain.entries[0].cert.0[..])
                 .map_err(|_| TLSError::CorruptMessagePayload(ContentType::Handshake))?;
 
@@ -605,7 +605,7 @@ impl hs::State for ExpectCertificate {
             }
         }
 
-        let certv = sess.config
+        let _certv = sess.config
             .get_verifier()
             .verify_server_cert(&sess.config.root_store,
                                 &self.server_cert.cert_chain,
@@ -625,7 +625,7 @@ impl hs::State for ExpectCertificate {
             }
         } else {
             Ok(self.into_expect_certificate_verify())
-     
+
         }
     }
 }
@@ -705,7 +705,7 @@ impl ExpectCiphertext {
             sess.common
                 .record_layer
                 .set_message_encrypter(cipher::new_tls13_write(suite, &write_key));
-            
+
             self.handshake.print_runtime("WRITING TO SERVER");
             sess.common.start_traffic();
 
@@ -833,7 +833,7 @@ impl hs::State for ExpectCertificateVerify {
 
         self.handshake.print_runtime("AUTHENTICATED SERVER");
 
-        Ok(self.into_expect_finished(certv, sigv))
+        Ok(self.into_expect_finished(verify::ServerCertVerified::assertion(), sigv))
     }
 }
 
@@ -989,7 +989,7 @@ fn emit_finished_tls13(handshake: &mut HandshakeDetails,
                        is_pdk: bool) {
     let verify_data = if is_pdk {
         key_schedule.sign_client_finished_kemtlspdk(handshake_hash)
-    } else { 
+    } else {
         key_schedule.sign_client_finish(handshake_hash)
     };
     let verify_data_payload = Payload::new(verify_data);
@@ -1233,17 +1233,17 @@ impl hs::State for ExpectKEMTLSFinished {
 
         self.key_schedule.exporter_master_secret(
             hash, &*sess.config.key_log, &self.handshake.randoms.client);
-        
+
         let read_key = self.key_schedule.server_application_traffic_secret(
             hash,
             &*sess.config.key_log,
             &self.handshake.randoms.client);
-        
+
         let suite = sess.common.get_suite_assert();
         sess.common.record_layer.set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
 
         self.handshake.print_runtime("HANDSHAKE COMPLETED");
-        
+
         Ok(self.into_expect_traffic(fin))
     }
 }

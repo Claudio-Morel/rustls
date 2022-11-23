@@ -323,6 +323,12 @@ enum_builder! {
 // }
 include!("../generated/enums_namedgroup.rs");
 
+impl std::hash::Hash for NamedGroup {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.get_u16().hash(state)
+    }
+}
+
 enum_builder! {
     /// The `CipherSuite` TLS protocol enum.  Values in this enum are taken
     /// from the various RFCs covering TLS, and are listed by IANA.

@@ -21,12 +21,15 @@ oqs = { version = "*", git = "https://github.com/thomwiggers/oqs-rs.git", branch
 untrusted = "0.7"
 xmss-rs = { git = "https://github.com/thomwiggers/xmss-rs.git" }
 secsidh = { path = "../../secsidh-rs/secsidh" }
+lru = { version = "0.8.1", optional = true}
+lazy_static = {version = "1.4.0", optional = true}
 
 [features]
 default = ["logging"]
 logging = ["log"]
 dangerous_configuration = []
 quic = []
+lru = ["dep:lru", "dep:lazy_static"]
 
 [dev-dependencies]
 env_logger = "0.8.2"

@@ -17,10 +17,49 @@ pub enum KexAlgorithm {
     CSIDH(secsidh::Algorithm),
 }
 
+impl PartialEq for KexAlgorithm {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::RingAlg(l0), Self::RingAlg(r0)) => l0 == r0,
+            (Self::KEM(l0), Self::KEM(r0)) => l0.algorithm() == r0.algorithm(),
+            (Self::CSIDH(l0), Self::CSIDH(r0)) => l0 == r0,
+            (_, _) => false
+        }
+    }
+}
+
+impl Eq for KexAlgorithm {}
+
+impl std::hash::Hash for KexAlgorithm {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            KexAlgorithm::RingAlg(_) => panic!("Not supported for ring algs"),
+            KexAlgorithm::KEM(kem) => {
+                "kem".hash(state);
+                kem.algorithm().hash(state);
+            },
+            KexAlgorithm::CSIDH(alg) => {
+                "csidh".hash(state);
+                alg.hash(state);
+            }
+        }
+    }
+}
+
 pub enum KexPrivateKey {
     RingKey(Option<ring::agreement::EphemeralPrivateKey>),
     KEM(oqs::kem::SecretKey),
     CSIDH(secsidh::SecretKey),
+}
+
+impl Clone for KexPrivateKey {
+    fn clone(&self) -> Self {
+        match self {
+            Self::RingKey(_) => panic!("Not supported for ECDH"),
+            Self::KEM(arg0) => Self::KEM(arg0.clone()),
+            Self::CSIDH(arg0) => Self::CSIDH(arg0.clone()),
+        }
+    }
 }
 
 impl KexPrivateKey {
@@ -44,6 +83,7 @@ impl KexPrivateKey {
     }
 }
 
+#[derive(Clone)]
 pub enum KexPublicKey {
     RingKey(ring::agreement::PublicKey),
     KEM(oqs::kem::PublicKey),
@@ -100,6 +140,19 @@ pub struct KeyExchange {
     pub pubkey: KexPublicKey,
 }
 
+
+#[cfg(feature = "lru")]
+use std::sync::{Mutex, Arc};
+#[cfg(feature = "lru")]
+use lru::LruCache;
+#[cfg(feature = "lru")]
+use lazy_static::lazy_static;
+#[cfg(feature = "lru")]
+lazy_static! {
+    static ref CACHE: Arc<Mutex<LruCache<NamedGroup, (KexPublicKey,KexPrivateKey)>>> = Arc::new(Mutex::new(LruCache::unbounded()));
+}
+
+
 impl KeyExchange {
     pub fn named_group_to_ecdh_alg(group: NamedGroup) -> Option<KexAlgorithm> {
         match group {
@@ -129,27 +182,49 @@ impl KeyExchange {
         ]
     }
 
+    #[allow(unused_variables)]
+    fn generate_key(group: NamedGroup, alg: &KexAlgorithm) -> (KexPublicKey, KexPrivateKey) {
+            #[cfg(feature = "lru")] {
+                let mutex = Arc::clone(&CACHE);
+                let mut cache = mutex.lock().unwrap();
+                if let Some(result) = cache.get(&group) {
+                    return result.clone();
+                }
+            }
+
+            let result = match alg {
+                KexAlgorithm::KEM(kem) => {
+                    let (pk, sk) = kem.keypair().unwrap();
+                    (KexPublicKey::KEM(pk), KexPrivateKey::KEM(sk))
+                },
+                KexAlgorithm::CSIDH(alg) => {
+                    let (pk, sk) = secsidh::keygen(*alg).unwrap();
+                    (KexPublicKey::CSIDH(pk), KexPrivateKey::CSIDH(sk))
+
+                },
+                _ => unreachable!("Should already be covered")
+            };
+            #[cfg(feature="lru")]
+            {
+                let mutex = Arc::clone(&CACHE);
+                let mut cache = mutex.lock().unwrap();
+                cache.put(group, result.clone());
+            }
+            result
+    }
+
     // Generate's the public key keyshare
     pub fn start_kex(named_group: NamedGroup) -> Option<KeyExchange> {
         let alg = KeyExchange::named_group_to_ecdh_alg(named_group)?;
         match alg {
             KexAlgorithm::RingAlg(alg) => Self::start_ecdhe(named_group, alg),
-            KexAlgorithm::KEM(kem) => {
-                let (pk, sk) = kem.keypair().unwrap();
+            _ => {
+                let (pubkey, privkey) = KeyExchange::generate_key(named_group, &alg);
                 Some(KeyExchange {
                     group: named_group,
-                    alg: KexAlgorithm::KEM(kem),
-                    privkey: KexPrivateKey::KEM(sk),
-                    pubkey: KexPublicKey::KEM(pk),
-                })
-            },
-            KexAlgorithm::CSIDH(alg) => {
-                let (pk, sk) = secsidh::keygen(alg).unwrap();
-                Some(KeyExchange {
-                    group: named_group,
-                    alg: KexAlgorithm::CSIDH(alg),
-                    pubkey: KexPublicKey::CSIDH(pk),
-                    privkey: KexPrivateKey::CSIDH(sk),
+                    alg: alg,
+                    privkey,
+                    pubkey,
                 })
             },
         }
@@ -173,11 +248,12 @@ impl KeyExchange {
                 let (ciphertext, shared_secret) = kem.encapsulate(pk).ok()?;
                 Some(KeyExchangeResult {ciphertext: ciphertext.into_vec(), shared_secret: shared_secret.into_vec()})
             },
-            KexAlgorithm::CSIDH(alg) => {
+            KexAlgorithm::CSIDH(csidhalg) => {
                 // our public key is the ciphertext if we phrase a NIKE as a KEM
-                let (ciphertext, sk) = secsidh::keygen(alg)?;
-                let ciphertext = ciphertext.as_ref().to_vec();
-                let pk_b = secsidh::PublicKey::from_bytes(alg, peer)?;
+                let (pubkey, privkey) = KeyExchange::generate_key(named_group, &alg);
+                let sk = privkey.as_csidh_key();
+                let ciphertext = pubkey.as_ref().to_vec();
+                let pk_b = secsidh::PublicKey::from_bytes(csidhalg, peer)?;
                 let shared_secret = secsidh::derive(&pk_b, &sk)?;
                 Some(KeyExchangeResult {
                     ciphertext, shared_secret
@@ -220,7 +296,7 @@ impl KeyExchange {
     pub fn client_kex(kx_params: &[u8]) -> Option<KeyExchangeResult> {
         let mut rd = Reader::init(kx_params);
         let server_params = ServerECDHParams::read(&mut rd).unwrap();
-        
+
         Self::encapsulate(server_params.curve_params.named_group, &server_params.public.0)
     }
 
