@@ -187,7 +187,7 @@ impl KeyExchange {
             #[cfg(feature = "lru")] {
                 let mutex = Arc::clone(&CACHE);
                 let mut cache = mutex.lock().unwrap();
-                if let Some(result) = cache.get(&group) {
+                if let Some(result) = cache.peek(&group) {
                     return result.clone();
                 }
             }

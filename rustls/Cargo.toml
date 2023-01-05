@@ -20,7 +20,7 @@ webpki = "0.21.9999"
 oqs = { version = "*", git = "https://github.com/thomwiggers/oqs-rs.git", branch = "dirty-oqs-avx2-rainbow-0.7.1", features = ["non_portable"] }
 untrusted = "0.7"
 xmss-rs = { git = "https://github.com/thomwiggers/xmss-rs.git" }
-secsidh = { path = "../../secsidh-rs/secsidh" }
+secsidh = { path = "../../secsidh-rs/secsidh", features = ["karatsuba"] }
 lru = { version = "0.8.1", optional = true}
 lazy_static = {version = "1.4.0", optional = true}
 
