@@ -186,7 +186,7 @@ with open("rustls/src/generated/nikes.rs", "w") as fh:
     fh.write("]")
 
 for alg, _ in signs + kems + list(zip(nikes, repeat("nope"))):
-    input_str = f"OBJECT_IDENTIFIER {{ {get_oid(alg)} }}\n"
+    input_str = f"OBJECT_IDENTIFIER {{ {get_oid(alg.lower())} }}\n"
     subprocess.run(
         ["../mk-cert/ascii2der", "-o", f"rustls/src/generated/data/alg-{alg}.der"],
         input=input_str.encode(),

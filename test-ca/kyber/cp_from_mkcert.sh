@@ -3,6 +3,7 @@
 set -e
 
 pushd ../../../mk-cert
+pipenv install
 env ROOT_SIGALG=dilithium2 INT_SIGALG=dilithium2 LEAF_ALG=kyber512 \
     CLIENT_ALG="kyber512" CLIENT_CA_ALG="dilithium2" \
     HOSTNAMES=testserver.com,second.testserver.com,localhost \
