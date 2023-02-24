@@ -59,6 +59,8 @@ enum_builder! {
         PQOV25611244CLASSIC => 0x3b,
         PQOV25618472CLASSIC => 0x3c,
         PQOV25624496CLASSIC => 0x3d,
-        XMSS => 0x3e,
+        XMSS1 => 0x3e,
+        XMSS3 => 0x3f,
+        XMSS5 => 0x40,
     }
 }

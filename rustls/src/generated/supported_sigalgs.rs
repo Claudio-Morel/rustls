@@ -58,5 +58,7 @@ static SUPPORTED_SIG_ALGS: SignatureAlgorithms = &[
     &webpki::PQOV25611244CLASSIC,
     &webpki::PQOV25618472CLASSIC,
     &webpki::PQOV25624496CLASSIC,
-    &webpki::XMSS,
+    &webpki::XMSS1,
+    &webpki::XMSS3,
+    &webpki::XMSS5,
 ];

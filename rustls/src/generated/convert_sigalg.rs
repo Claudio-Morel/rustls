@@ -50,7 +50,9 @@ match scheme {
     PQOV25611244CLASSIC => Ok(&webpki::PQOV25611244CLASSIC),
     PQOV25618472CLASSIC => Ok(&webpki::PQOV25618472CLASSIC),
     PQOV25624496CLASSIC => Ok(&webpki::PQOV25624496CLASSIC),
-    XMSS => Ok(&webpki::XMSS),
+    XMSS1 => Ok(&webpki::XMSS1),
+    XMSS3 => Ok(&webpki::XMSS3),
+    XMSS5 => Ok(&webpki::XMSS5),
 
     _ => {
         let error_msg = format!("received unsupported sig scheme {:?}", scheme);

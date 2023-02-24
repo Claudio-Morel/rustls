@@ -44,5 +44,7 @@
     SignatureScheme::PQOV25611244CLASSIC,
     SignatureScheme::PQOV25618472CLASSIC,
     SignatureScheme::PQOV25624496CLASSIC,
-    SignatureScheme::XMSS,
+    SignatureScheme::XMSS1,
+    SignatureScheme::XMSS3,
+    SignatureScheme::XMSS5,
 ]

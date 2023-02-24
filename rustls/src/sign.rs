@@ -433,7 +433,7 @@ impl PQSigningKey {
                 let private_key = der::expect_tag_and_get_value(input, der::Tag::OctetString)
                     .map_err(|e| { panic!("{:?}", e) })?;
 
-                if scheme != SignatureScheme::XMSS {
+                if scheme != SignatureScheme::XMSS1 && scheme != SignatureScheme::XMSS3 && scheme != SignatureScheme::XMSS5 {
                     let oqsalg = include!("generated/sigscheme_to_oqsalg.rs");
                     oqs::init();
                     let oqsalg = oqs::sig::Sig::new(oqsalg).unwrap();
@@ -469,7 +469,7 @@ struct PQSigner {
 impl Signer for PQSigner {
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>, TLSError> {
         let scheme = self.scheme;
-        if scheme == SignatureScheme::XMSS {
+        if scheme == SignatureScheme::XMSS1 || scheme == SignatureScheme::XMSS3 || scheme == SignatureScheme::XMSS5 {
             // we a) can't handle state b) don't trust XMSS.
             return Err(TLSError::General("XMSS is not supported as signing algorithm.".to_string()));
         }
@@ -477,7 +477,7 @@ impl Signer for PQSigner {
         let oqsalg: oqs::sig::Algorithm = include!("generated/sigscheme_to_oqsalg.rs");
         oqs::init();
         let sig: oqs::sig::Sig = oqsalg.try_into().unwrap();
-        
+
         let sk = sig.secret_key_from_bytes(self.key.as_ref()).unwrap();
 
         sig.sign(message, sk)
@@ -525,7 +525,7 @@ impl PQKemKey {
                 oqs::init();
                 let oqsalg = oqs::kem::Kem::new(oqsalg).unwrap();
                 assert_eq!(private_key.len(), oqsalg.length_secret_key(), "secret key length");
-                
+
                 Ok(private_key.as_slice_less_safe().to_vec())
          })
             .map(|key| PQKemKey{ key: Arc::new(key), scheme })

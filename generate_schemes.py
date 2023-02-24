@@ -145,7 +145,7 @@ with open("rustls/src/generated/pq_sigscheme_to_sigalg.rs", "w") as fh:
 with open("rustls/src/generated/sigscheme_to_oqsalg.rs", "w") as fh:
     fh.write("match scheme {\n")
     for alg, oqsalg in signs:
-        if alg == "xmss":
+        if alg.startswith("xmss"):
             continue
         fh.write(f"    SignatureScheme::{alg.upper()} => oqs::sig::Algorithm::{oqsalg},\n")
     fh.write("    _ => unreachable!(),")
