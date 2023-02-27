@@ -69,7 +69,7 @@ impl TlsServer {
             match self.server.accept() {
                 Ok((socket, addr)) => {
                     debug!("Accepting new connection from {:?}", addr);
-                    socket.set_nodelay(false)?; // Nagle algorithm switch
+                    socket.set_nodelay(true)?; // Nagle algorithm switch
 
                     let tls_session = rustls::ServerSession::new(&self.tls_config);
                     let mode = self.mode.clone();
