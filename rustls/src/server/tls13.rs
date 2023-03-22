@@ -432,7 +432,7 @@ impl CompleteClientHelloHandling {
                     agreement(&public_key, &private_key).to_vec()
                 },
                 webpki::NikeImpl::Ctidh(webpki::CtidhAlg::ctidh1024) => {
-                    use csidh_rust::ctidh512::*;
+                    use csidh_rust::ctidh1024::*;
                     let private_key = CSIDHPrivateKey::from_bytes(private_key);
                     let public_key = CSIDHPublicKey::from_bytes(&chosen_share.payload.0);
                     agreement(&public_key, &private_key).to_vec()
