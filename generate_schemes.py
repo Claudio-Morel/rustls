@@ -17,10 +17,17 @@ with open('rustls/src/generated/named_group_to_kex.rs', 'w') as fh:
 """)
     for alg in nikes:
         algname = alg.replace("csidh", "CSIDH")
-        fh.write(f"""
+        if alg.startswith("ctidh"):
+            fh.write(f"""
         NamedGroup::{alg.upper()} => {{
-            Some(KexAlgorithm::CSIDH(secsidh::Algorithm::{algname}))
+            Some(KexAlgorithm::CSIDH(NikeImpl::{alg.upper()}))
         }},
+""")
+        else:
+            fh.write(f"""
+        NamedGroup::{alg.upper()} => {{
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::{algname})))
+            }},
 """)
     fh.write("_ => None,\n}")
 
@@ -162,7 +169,10 @@ with open("rustls/src/generated/nike_to_csidhalg.rs", "w") as fh:
     fh.write("match scheme {\n")
     for alg in nikes:
         secsidhalg = alg.replace("csidh", "CSIDH")
-        fh.write(f"    SignatureScheme::NIKE_{alg.upper()} => secsidh::Algorithm::{secsidhalg},\n")
+        if alg.startswith("ctidh"):
+            fh.write(f"    SignatureScheme::NIKE_{alg.upper()} => NikeImpl::{alg.upper()},\n")
+        else:
+            fh.write(f"    SignatureScheme::NIKE_{alg.upper()} => NikeImpl::SecSidh(secsidh::Algorithm::{secsidhalg}),\n")
     fh.write("    _ => unreachable!(),")
     fh.write("}")
 

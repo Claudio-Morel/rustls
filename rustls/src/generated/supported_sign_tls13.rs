@@ -86,6 +86,8 @@
     SignatureScheme::KEMTLS_HQC128,
     SignatureScheme::KEMTLS_HQC192,
     SignatureScheme::KEMTLS_HQC256,
+    SignatureScheme::NIKE_CTIDH512,
+    SignatureScheme::NIKE_CTIDH1024,
     SignatureScheme::NIKE_CSIDH2047K221,
     SignatureScheme::NIKE_CSIDH4095K256,
     SignatureScheme::NIKE_CSIDH5119K234,

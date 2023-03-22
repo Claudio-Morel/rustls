@@ -1,5 +1,13 @@
 
- if webpkischeme == &webpki::CSIDH2047K221 {
+ if webpkischeme == &webpki::CTIDH512 {
+    return SignatureScheme::NIKE_CTIDH512;
+}
+
+else if webpkischeme == &webpki::CTIDH1024 {
+    return SignatureScheme::NIKE_CTIDH1024;
+}
+
+else if webpkischeme == &webpki::CSIDH2047K221 {
     return SignatureScheme::NIKE_CSIDH2047K221;
 }
 

@@ -1,4 +1,6 @@
 match (named_group, sigalg) {
+	(NamedGroup::CTIDH512, SignatureScheme::NIKE_CTIDH512) => true,
+	(NamedGroup::CTIDH1024, SignatureScheme::NIKE_CTIDH1024) => true,
 	(NamedGroup::CSIDH2047K221, SignatureScheme::NIKE_CSIDH2047K221) => true,
 	(NamedGroup::CSIDH4095K256, SignatureScheme::NIKE_CSIDH4095K256) => true,
 	(NamedGroup::CSIDH5119K234, SignatureScheme::NIKE_CSIDH5119K234) => true,

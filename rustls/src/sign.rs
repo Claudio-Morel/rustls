@@ -556,6 +556,17 @@ struct NikeKey {
     scheme: SignatureScheme,
 }
 
+#[derive(PartialEq, Clone, Copy)]
+/// nike implementations
+pub enum NikeImpl {
+    /// ctidh512
+    CTIDH512,
+    /// ctidh1024
+    CTIDH1024,
+    /// secsidh
+    SecSidh(secsidh::Algorithm)
+}
+
 impl NikeKey {
     fn new(der: &key::PrivateKey, scheme: SignatureScheme) -> Result<NikeKey, ()> {
         use ring::io::der;
@@ -582,7 +593,17 @@ impl NikeKey {
                     .map_err(|e| { panic!("{:?}", e) })?;
 
                 let csidhalg = include!("generated/nike_to_csidhalg.rs");
-                assert_eq!(private_key.len(), secsidh::length_secret_key(csidhalg).unwrap(), "secret key length");
+                match csidhalg {
+                    NikeImpl::SecSidh(alg) => {
+                        assert_eq!(private_key.len(), secsidh::length_secret_key(alg).unwrap(), "secret key length");
+                    },
+                    NikeImpl::CTIDH512 => {
+                        assert_eq!(private_key.len(), csidh_rust::ctidh512::PRIVATE_KEY_LEN, "Length of secret key incorrect");
+                    }
+                    NikeImpl::CTIDH1024 => {
+                        assert_eq!(private_key.len(), csidh_rust::ctidh1024::PRIVATE_KEY_LEN, "Length of secret key incorrect");
+                    }
+                }
 
                 Ok(private_key.as_slice_less_safe().to_vec())
          })

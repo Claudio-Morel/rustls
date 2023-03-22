@@ -80,6 +80,8 @@ match scheme {
     SignatureScheme::KEMTLS_HQC128 => include_bytes!("data/alg-hqc128.der"),
     SignatureScheme::KEMTLS_HQC192 => include_bytes!("data/alg-hqc192.der"),
     SignatureScheme::KEMTLS_HQC256 => include_bytes!("data/alg-hqc256.der"),
+    SignatureScheme::NIKE_CTIDH512 => include_bytes!("data/alg-ctidh512.der"),
+    SignatureScheme::NIKE_CTIDH1024 => include_bytes!("data/alg-ctidh1024.der"),
     SignatureScheme::NIKE_CSIDH2047K221 => include_bytes!("data/alg-CSIDH2047k221.der"),
     SignatureScheme::NIKE_CSIDH4095K256 => include_bytes!("data/alg-CSIDH4095k256.der"),
     SignatureScheme::NIKE_CSIDH5119K234 => include_bytes!("data/alg-CSIDH5119k234.der"),

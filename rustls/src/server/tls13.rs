@@ -140,7 +140,7 @@ impl CompleteClientHelloHandling {
         self.handshake.print_runtime("ENCAPSULATING TO EPHEMERAL");
         let kxr = suites::KeyExchange::encapsulate(share.group, &share.payload.0)
             .ok_or_else(|| TLSError::PeerMisbehavedError("key exchange failed".to_string()))?;
-        self.handshake.print_runtime("ENCAPSULATED TO EPHEMERAL");            
+        self.handshake.print_runtime("ENCAPSULATED TO EPHEMERAL");
 
         let kse = KeyShareEntry::new(share.group, kxr.ciphertext.as_ref());
         extensions.push(ServerExtension::KeyShare(kse));
@@ -223,7 +223,7 @@ impl CompleteClientHelloHandling {
         sess.common
             .record_layer
             .set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
-        
+
         self.handshake.print_runtime("DERIVED HS");
 
         #[cfg(feature = "quic")] {
@@ -415,13 +415,30 @@ impl CompleteClientHelloHandling {
             use ring::{hkdf, hmac};
 
             let scheme = eecert.nike_public_key().unwrap().0;
-            let secsidhalg = scheme.alg;
+            let nikealg = scheme.alg;
             let scheme = webpki_nike_to_sigscheme(scheme);
             let private_key = server_key.key.get_bytes();
-            let private_key = secsidh::SecretKey::from_bytes(secsidhalg, private_key).unwrap();
-            let public_key = secsidh::PublicKey::from_bytes(secsidhalg, &chosen_share.payload.0).unwrap();
+            let ss = match nikealg {
+                webpki::NikeImpl::SecSidh(secsidhalg) => {
+                    let private_key = secsidh::SecretKey::from_bytes(secsidhalg, private_key).unwrap();
+                    let public_key = secsidh::PublicKey::from_bytes(secsidhalg, &chosen_share.payload.0).unwrap();
 
-            let ss = secsidh::derive(&public_key, &private_key).unwrap();
+                    secsidh::derive(&public_key, &private_key).unwrap()
+                },
+                webpki::NikeImpl::Ctidh(webpki::CtidhAlg::ctidh512) => {
+                    use csidh_rust::ctidh512::*;
+                    let private_key = CSIDHPrivateKey::from_bytes(private_key);
+                    let public_key = CSIDHPublicKey::from_bytes(&chosen_share.payload.0);
+                    agreement(&public_key, &private_key).to_vec()
+                },
+                webpki::NikeImpl::Ctidh(webpki::CtidhAlg::ctidh1024) => {
+                    use csidh_rust::ctidh512::*;
+                    let private_key = CSIDHPrivateKey::from_bytes(private_key);
+                    let public_key = CSIDHPublicKey::from_bytes(&chosen_share.payload.0);
+                    agreement(&public_key, &private_key).to_vec()
+                }
+            };
+
 
             // derive xSS and compute as finished as per https://datatracker.ietf.org/doc/html/draft-ietf-tls-semistatic-dh-01#section-5
             let key = hkdf::Salt::new(hkdf::HKDF_SHA384, &[]).extract(ss.as_ref());
@@ -658,7 +675,7 @@ impl CompleteClientHelloHandling {
         let doing_pdk = server_key
             .end_entity_cert()
             .and_then(|crt| client_hello.get_proactive_ciphertext(crt).ok_or(()));
-    
+
         let mut proactive_static_shared_secret = None;
         let mut proactive_ss_certificate_hash = None;
         if chosen_psk_index.is_none() {
@@ -690,8 +707,8 @@ impl CompleteClientHelloHandling {
 
         if let Some(ref ks) = maybe_key_schedule {
             let read_key = ks.client_early_traffic_secret(
-                &self.handshake.transcript.get_current_hash(), 
-                &*sess.config.key_log, 
+                &self.handshake.transcript.get_current_hash(),
+                &*sess.config.key_log,
                 &self.handshake.randoms.client);
             sess.common
                 .record_layer
@@ -733,7 +750,7 @@ impl CompleteClientHelloHandling {
                 sigschemes_ext: Vec<SignatureScheme>,
                 cert: Option<ClientCertDetails>,
             ) -> hs::NextStateOrError {
-        
+
         // split
         let key_schedule = self.emit_server_hello(sess, &client_hello.session_id,
                                                   chosen_share, chosen_psk_index,
@@ -800,7 +817,7 @@ impl CompleteClientHelloHandling {
                 };
                 self.handshake.transcript.add_message(&m);
                 sess.common.send_msg(m, true);
-    
+
                 let ks = emit_finished_kemtlspdk(&mut self.handshake, sess, key_schedule, Some(ss.as_ref()));
                 Ok(self.into_expect_finished(ks, true))
             } else {
@@ -843,15 +860,15 @@ impl ExpectPDKCertificate {
     fn finish_handle_clienthello(self, sess: &mut ServerSessionImpl, cert: ClientCertDetails) -> hs::NextStateOrError {
         self.expect_hello.complete_handle_client_hello(
             sess,
-            self.server_key, 
-            &self.client_hello, 
+            self.server_key,
+            &self.client_hello,
             self.key_schedule,
-            &self.chosen_share, 
-            self.chosen_psk_index, 
+            &self.chosen_share,
+            self.chosen_psk_index,
             self.resumedata,
-            self.proactive_ss_certificate_hash, 
-            self.pdk_client_auth, 
-            self.full_handshake, 
+            self.proactive_ss_certificate_hash,
+            self.pdk_client_auth,
+            self.full_handshake,
             self.doing_pdk,
             self.sigschemes_ext,
             Some(cert),
@@ -940,7 +957,7 @@ fn emit_finished_kemtlspdk(
 }
 
 pub struct ExpectCiphertext {
-    handshake: HandshakeDetails, 
+    handshake: HandshakeDetails,
     key_schedule: KeyScheduleHandshake,
     client_auth: bool,
     server_key: sign::CertifiedKey,
@@ -970,7 +987,7 @@ impl hs::State for ExpectCiphertext {
     fn handle(mut self: Box<Self>, sess: &mut ServerSessionImpl, m: Message) -> hs::NextStateOrError {
         let ctmsg = require_handshake_msg!(m, HandshakeType::ServerKemCiphertext, HandshakePayload::ServerKemCiphertext)?;
         self.handshake.print_runtime("RECEIVED CKEX");
-        
+
         // decapsulate
         let ciphertext = &ctmsg.0;
         let eecrt = self.server_key.end_entity_cert()
@@ -980,7 +997,7 @@ impl hs::State for ExpectCiphertext {
         self.handshake.print_runtime("DECAPSULATING FROM CERTIFICATE");
         let ss = eecrt.decapsulate(self.server_key.key.get_bytes(), ciphertext).map_err(TLSError::WebPKIError)?;
         self.handshake.print_runtime("DECAPSULATED FROM CERTIFICATE");
-        
+
         // add message to transcript
         self.handshake.transcript.add_message(&m);
 
@@ -1257,7 +1274,7 @@ impl hs::State for ExpectKEMTLSFinished {
             .client_application_traffic_secret(&self.handshake.transcript.get_current_hash(),
                                                 &*sess.config.key_log,
                                                 &self.handshake.randoms.client);
-        
+
         let handshake_hash = self.handshake.transcript.get_current_hash();
         let verify_data = self.key_schedule.sign_server_finish(&handshake_hash);
         let verify_data_payload = Payload::new(verify_data);
@@ -1297,7 +1314,7 @@ impl hs::State for ExpectKEMTLSFinished {
             .exporter_master_secret(&self.handshake.hash_at_server_fin,
                                     &*sess.config.key_log,
                                     &self.handshake.randoms.client);
-                                               
+
         let key_schedule_traffic = self.key_schedule.into_traffic();
 
         if self.send_ticket {
@@ -1421,20 +1438,20 @@ impl hs::State for ExpectFinished {
 
         // nb. future derivations include Client Finished, but not the
         // main application data keying.
-        let handshake_hash = if self.is_pdk { 
-            self.handshake.transcript.get_current_hash() 
-        } else { 
+        let handshake_hash = if self.is_pdk {
+            self.handshake.transcript.get_current_hash()
+        } else {
             self.handshake.hash_at_server_fin.clone()
         };
 
         trace!("Computing CFIN for hash: {:x?}", handshake_hash);
-        
+
         let expect_verify_data = if self.is_pdk {
             self.key_schedule.sign_client_finished_kemtlspdk(&handshake_hash)
         } else {
             self.key_schedule.sign_client_finish(&handshake_hash)
         };
-        
+
         let fin = constant_time::verify_slices_are_equal(&expect_verify_data, &finished.0)
             .map_err(|_| {
                      sess.common.send_fatal_alert(AlertDescription::DecryptError);
@@ -1442,7 +1459,7 @@ impl hs::State for ExpectFinished {
                      TLSError::DecryptError
                      })
             .map(|_| verify::FinishedMessageVerified::assertion())?;
-        
+
         self.handshake.transcript.add_message(&m);
 
         hs::check_aligned_handshake(sess)?;
@@ -1465,7 +1482,7 @@ impl hs::State for ExpectFinished {
         sess.common
             .record_layer
             .set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
-        
+
         // if we're doing PDK we still need to derive this.
         if self.is_pdk {
             self.key_schedule
