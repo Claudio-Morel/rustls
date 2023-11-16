@@ -206,52 +206,52 @@ match group {
             Some(KexAlgorithm::CSIDH(NikeImpl::CTIDH1024))
         },
 
-        NamedGroup::CSIDH2047K221 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH2047k221)))
+        NamedGroup::CSIDH2047M1L226 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH2047m1l226)))
             },
 
-        NamedGroup::CSIDH4095K256 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH4095k256)))
+        NamedGroup::CSIDH4095M27L262 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH4095m27l262)))
             },
 
-        NamedGroup::CSIDH5119K234 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH5119k234)))
+        NamedGroup::CSIDH5119M46L244 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH5119m46l244)))
             },
 
-        NamedGroup::CSIDH6143K256 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH6143k256)))
+        NamedGroup::CSIDH6143M59L262 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH6143m59l262)))
             },
 
-        NamedGroup::CSIDH8191K332 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH8191k332)))
+        NamedGroup::CSIDH8191M78L338 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH8191m78l338)))
             },
 
-        NamedGroup::CSIDH9215K384 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH9215k384)))
+        NamedGroup::CSIDH9215M85L389 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CSIDH9215m85l389)))
             },
 
-        NamedGroup::CTIDH2047K221 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH2047k221)))
+        NamedGroup::CTIDH2047M1L226 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH2047m1l226)))
             },
 
-        NamedGroup::CTIDH4095K256 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH4095k256)))
+        NamedGroup::CTIDH4095M27L262 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH4095m27l262)))
             },
 
-        NamedGroup::CTIDH5119K234 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH5119k234)))
+        NamedGroup::CTIDH5119M46L244 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH5119m46l244)))
             },
 
-        NamedGroup::CTIDH6143K256 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH6143k256)))
+        NamedGroup::CTIDH6143M59L262 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH6143m59l262)))
             },
 
-        NamedGroup::CTIDH8191K332 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH8191k332)))
+        NamedGroup::CTIDH8191M78L338 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH8191m78l338)))
             },
 
-        NamedGroup::CTIDH9215K384 => {
-            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH9215k384)))
+        NamedGroup::CTIDH9215M85L389 => {
+            Some(KexAlgorithm::CSIDH(NikeImpl::SecSidh(secsidh::Algorithm::CTIDH9215m85l389)))
             },
 _ => None,
 }
