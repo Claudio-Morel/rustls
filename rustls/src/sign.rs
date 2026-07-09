@@ -144,7 +144,8 @@ impl CertifiedKey {
 /// Parse `der` as any supported key encoding/type, returning
 /// the first which works.
 pub fn any_supported_type(der: &key::PrivateKey) -> Result<Box<dyn SigningKey>, ()> {
-    if let Ok(rsa) = RSASigningKey::new(der) {
+    let rsa_result = RSASigningKey::new(der);
+    if let Ok(rsa) = rsa_result {
         Ok(Box::new(rsa))
     } else if let Ok(ecdsa) = any_ecdsa_type(der) {
         Ok(ecdsa)

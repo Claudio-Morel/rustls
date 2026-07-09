@@ -19,6 +19,8 @@ use rustls::sign;
 use rustls::{ALL_CIPHERSUITES, SupportedCipherSuite};
 use rustls::KeyLog;
 use rustls::ClientHello;
+use rustls::internal::pemfile;
+use rustls::internal::msgs::enums::AlertDescription;
 #[cfg(feature = "quic")]
 use rustls::quic::{self, QuicExt, ClientQuicExt, ServerQuicExt};
 
@@ -687,6 +689,79 @@ fn client_auth_works() {
             do_handshake(&mut client, &mut server);
         }
     }
+}
+
+fn make_client_config_with_auth_material(
+    trust_kt: KeyType,
+    auth_keytype: &str,
+    cert_path: &str,
+    key_path: &str,
+) -> ClientConfig {
+    let mut cfg = make_client_config(trust_kt);
+    let certs = pemfile::certs(&mut io::BufReader::new(bytes_for(auth_keytype, cert_path)))
+        .unwrap();
+    let key = pemfile::pkcs8_private_keys(&mut io::BufReader::new(bytes_for(auth_keytype, key_path)))
+        .unwrap()[0]
+        .clone();
+    cfg.set_single_client_cert(certs, key).unwrap();
+    cfg
+}
+
+fn make_kemtls_server_config_with_production_client_ca() -> ServerConfig {
+    let mut roots = rustls::RootCertStore::empty();
+    for cert in pemfile::certs(&mut io::BufReader::new(bytes_for("kyber", "client-ca.cert"))).unwrap() {
+        roots.add(&cert).unwrap();
+    }
+
+    let client_auth = rustls::AllowAnyAuthenticatedClient::new(roots);
+    let mut cfg = ServerConfig::new(rustls::NoClientAuth::new());
+    cfg.set_client_certificate_verifier(client_auth);
+    cfg.set_single_cert(KeyType::Kyber512.get_chain(), KeyType::Kyber512.get_key()).unwrap();
+    cfg
+}
+
+#[test]
+fn kemtls_mutual_auth_accepts_valid_client_certificate() {
+    let client_config = Arc::new(make_client_config_with_auth(KeyType::Kyber512));
+    let server_config = Arc::new(make_kemtls_server_config_with_production_client_ca());
+    let (mut client, mut server) = make_pair_for_arc_configs(&client_config, &server_config);
+
+    assert_eq!(do_handshake_until_error(&mut client, &mut server), Ok(()));
+}
+
+#[test]
+fn kemtls_mutual_auth_rejects_missing_client_certificate() {
+    let client_config = Arc::new(make_client_config(KeyType::Kyber512));
+    let server_config = Arc::new(make_kemtls_server_config_with_production_client_ca());
+    let (mut client, mut server) = make_pair_for_arc_configs(&client_config, &server_config);
+
+    assert_eq!(
+        do_handshake_until_both_error(&mut client, &mut server),
+        Err(vec![
+            TLSErrorFromPeer::Server(TLSError::NoCertificatesPresented),
+            TLSErrorFromPeer::Client(TLSError::AlertReceived(AlertDescription::CertificateRequired)),
+        ])
+    );
+}
+
+#[test]
+fn kemtls_mutual_auth_rejects_reused_server_certificate() {
+    let client_config = Arc::new(make_client_config_with_auth_material(
+        KeyType::Kyber512,
+        "kyber",
+        "end.fullchain",
+        "end.key",
+    ));
+    let server_config = Arc::new(make_kemtls_server_config_with_production_client_ca());
+    let (mut client, mut server) = make_pair_for_arc_configs(&client_config, &server_config);
+
+    assert_eq!(
+        do_handshake_until_both_error(&mut client, &mut server),
+        Err(vec![
+            TLSErrorFromPeer::Server(TLSError::WebPKIError(webpki::Error::RequiredEKUNotFound)),
+            TLSErrorFromPeer::Client(TLSError::AlertReceived(AlertDescription::HandshakeFailure)),
+        ])
+    );
 }
 
 #[cfg(feature = "dangerous_configuration")]

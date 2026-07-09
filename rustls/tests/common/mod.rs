@@ -122,6 +122,7 @@ embed_files! {
     (KYBER_CA_CERT, "kyber", "ca.cert");
     //(KYBER_CA_DER, "kyber", "ca.der");
     (KYBER_CA_KEY, "kyber", "ca.key");
+    (KYBER_CLIENT_CA_CERT, "kyber", "client-ca.cert");
     (KYBER_CLIENT_CERT, "kyber", "client.cert");
     (KYBER_CLIENT_CHAIN, "kyber", "client.chain");
     (KYBER_CLIENT_FULLCHAIN, "kyber", "client.fullchain");

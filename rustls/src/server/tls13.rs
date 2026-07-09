@@ -946,6 +946,15 @@ fn emit_finished_kemtlspdk(
     handshake.print_runtime("WRITING TO CLIENT");
     //sess.common.start_traffic(); // breaks
 
+    key_schedule
+        .exporter_master_secret(&handshake.hash_at_server_fin,
+                                &*sess.config.key_log,
+                                &handshake.randoms.client);
+    let _read_key = key_schedule
+        .client_application_traffic_secret(&handshake.hash_at_server_fin,
+                                           &*sess.config.key_log,
+                                           &handshake.randoms.client);
+
     #[cfg(feature = "quic")] {
         sess.common.quic.traffic_secrets = Some(quic::Secrets {
             client: _read_key,
@@ -978,6 +987,7 @@ impl ExpectCiphertext {
             handshake: self.handshake,
             key_schedule: self.key_schedule.into_traffic_with_server_finished_pending(None),
             send_ticket: self.send_ticket,
+            client_cert: None,
         })
     }
 
@@ -1088,7 +1098,7 @@ impl ExpectCertificate {
         })
     }
 
-    fn emit_ciphertext(&mut self, sess: &mut ServerSessionImpl, cert: ClientCertDetails) -> Result<SharedSecret, TLSError> {
+    fn emit_ciphertext(&mut self, sess: &mut ServerSessionImpl, cert: &ClientCertDetails) -> Result<SharedSecret, TLSError> {
         let certificate = webpki::EndEntityCert::from(&cert.cert_chain[0].0)
             .map_err(TLSError::WebPKIError)?;
         self.handshake.print_runtime("ENCAPSULATING TO CLIENT");
@@ -1108,11 +1118,12 @@ impl ExpectCertificate {
         Ok(ss)
     }
 
-    fn into_expect_kemtls_finished(self, ss: SharedSecret) -> hs::NextStateOrError {
+    fn into_expect_kemtls_finished(self, ss: SharedSecret, cert: ClientCertDetails) -> hs::NextStateOrError {
         Ok(Box::new(ExpectKEMTLSFinished {
             key_schedule: self.key_schedule.kemtls().into_traffic_with_server_finished_pending(Some(ss.as_ref())),
             send_ticket: false,
             handshake: self.handshake,
+            client_cert: Some(cert),
         }))
     }
 
@@ -1151,18 +1162,17 @@ impl hs::State for ExpectCertificate {
             return Err(TLSError::NoCertificatesPresented);
         }
 
-        if self.key_schedule.is_kemtls() {
-            let cert = ClientCertDetails::new(cert_chain);
-            let ss = self.emit_ciphertext(sess, cert)?;
-            self.into_expect_kemtls_finished(ss)
-        } else {
-            sess.config.get_verifier().verify_client_cert(&cert_chain, sess.get_sni())
-                .or_else(|err| {
-                     hs::incompatible(sess, "certificate invalid");
-                     Err(err)
-                    })?;
-            let cert = ClientCertDetails::new(cert_chain);
+        sess.config.get_verifier().verify_client_cert(&cert_chain, sess.get_sni())
+            .or_else(|err| {
+                 hs::incompatible(sess, "certificate invalid");
+                 Err(err)
+                })?;
+        let cert = ClientCertDetails::new(cert_chain);
 
+        if self.key_schedule.is_kemtls() {
+            let ss = self.emit_ciphertext(sess, &cert)?;
+            self.into_expect_kemtls_finished(ss, cert)
+        } else {
             Ok(self.into_expect_certificate_verify(cert))
         }
     }
@@ -1245,6 +1255,7 @@ pub struct ExpectKEMTLSFinished {
     pub handshake: HandshakeDetails,
     key_schedule: KeyScheduleTrafficWithServerFinishedPending,
     send_ticket: bool,
+    client_cert: Option<ClientCertDetails>,
 }
 
 impl ExpectKEMTLSFinished {
@@ -1268,6 +1279,11 @@ impl hs::State for ExpectKEMTLSFinished {
             .map(|_| verify::FinishedMessageVerified::assertion())?;
 
         self.handshake.transcript.add_message(&m);
+
+        if let Some(mut client_cert) = self.client_cert.take() {
+            self.handshake.print_runtime("AUTHENTICATED CLIENT");
+            sess.client_cert_chain = Some(client_cert.take_chain());
+        }
 
         // Install keying to read future messages.
         let read_key = self.key_schedule
