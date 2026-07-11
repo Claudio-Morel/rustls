@@ -1,0 +1,5 @@
+[build]
+# Cap lint levels at warn: the KEMTLS rustls fork uses
+# #![deny(unused_qualifications)], which fails to build under current
+# Rust stable otherwise.
+rustflags = ["--cap-lints", "warn"]
