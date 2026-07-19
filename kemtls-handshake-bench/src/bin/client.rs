@@ -1,13 +1,61 @@
+use rustls::internal::pemfile;
+use rustls::{ClientConfig, ClientSession, Session};
 use std::{
     fs,
-    io::{self, Read, Write, BufReader},
+    io::{self, BufReader, Read, Write},
     net::TcpStream,
+    path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
-use rustls::{ClientConfig, ClientSession, Session};
-use rustls::internal::pemfile;
 use webpki::DNSNameRef;
+
+fn monotonic_ns() -> u64 {
+    let mut ts = Timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    let rc = unsafe { clock_gettime(CLOCK_MONOTONIC, &mut ts) };
+    assert_eq!(rc, 0, "clock_gettime(CLOCK_MONOTONIC) failed");
+    (ts.tv_sec as u64) * 1_000_000_000 + (ts.tv_nsec as u64)
+}
+
+#[cfg(target_os = "linux")]
+const CLOCK_MONOTONIC: i32 = 1;
+
+#[cfg(target_os = "linux")]
+extern "C" {
+    fn clock_gettime(clock_id: i32, tp: *mut Timespec) -> i32;
+}
+
+#[cfg(target_os = "linux")]
+#[repr(C)]
+struct Timespec {
+    tv_sec: i64,
+    tv_nsec: i64,
+}
+
+fn write_metrics_atomic(path: &Path, payload: &str) -> io::Result<()> {
+    let tmp_path = PathBuf::from(format!("{}.tmp.{}", path.display(), std::process::id()));
+    let result = (|| {
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(payload.as_bytes())?;
+        file.sync_all()?;
+        fs::rename(&tmp_path, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp_path);
+    }
+    result
+}
+
+fn is_pdk_variant(variant: &str) -> bool {
+    matches!(
+        variant,
+        "kyber512-mutual-pdk" | "kyber512-mutual-pdk-lo" | "kyber512-pdk" | "kyber512-pdk-lo"
+    )
+}
 
 struct MeteredStream {
     inner: TcpStream,
@@ -17,7 +65,11 @@ struct MeteredStream {
 
 impl MeteredStream {
     fn new(inner: TcpStream) -> Self {
-        Self { inner, bytes_read: 0, bytes_written: 0 }
+        Self {
+            inner,
+            bytes_read: 0,
+            bytes_written: 0,
+        }
     }
 }
 
@@ -57,10 +109,21 @@ fn main() {
         .init();
 
     let addr = std::env::var("SERVER_ADDR").unwrap_or_else(|_| "127.0.0.1:4433".to_string());
+    let crypto_variant =
+        std::env::var("KEMTLS_CRYPTO_VARIANT").unwrap_or_else(|_| "unknown".to_string());
+    let is_pdk = is_pdk_variant(&crypto_variant);
 
     let use_rsa = std::env::var("USE_RSA").is_ok();
-    let ca_path = if use_rsa { "test_rsa.crt" } else { "kem-ca.crt" };
-    let mode = if use_rsa { "RSA (sin auth mutua)" } else { "KEMTLS (Kyber512, auth mutua)" };
+    let ca_path = if use_rsa {
+        "test_rsa.crt"
+    } else {
+        "kem-ca.crt"
+    };
+    let mode = if use_rsa {
+        "RSA (sin auth mutua)"
+    } else {
+        "KEMTLS (Kyber512, auth mutua)"
+    };
 
     println!("🔧 Modo {}", mode);
     println!("📂 Cargando CA desde {}", ca_path);
@@ -94,22 +157,26 @@ fn main() {
 
     if let Ok(server_cert_path) = std::env::var("KEMTLS_SERVER_CERT_PATH") {
         let server_certs = read_certs(&server_cert_path);
-        println!("PDK: {} server certs pre-loaded for proactive encapsulation", server_certs.len());
+        println!(
+            "PDK: {} server certs pre-loaded for proactive encapsulation",
+            server_certs.len()
+        );
         cfg.known_certificates = server_certs;
     }
 
     println!("✅ Root store configurado");
 
     let config = Arc::new(cfg);
-    let dns_name = DNSNameRef::try_from_ascii_str("servername")
-        .expect("invalid DNS name");
+    let dns_name = DNSNameRef::try_from_ascii_str("servername").expect("invalid DNS name");
 
     println!("🔌 Conectando a {} ...", addr);
     let session_start = Instant::now();
+    let session_start_ns = monotonic_ns();
 
     let stream = TcpStream::connect(&addr).expect("TCP connect failed");
-    let tcp_connected_ns = session_start.elapsed().as_nanos();
-    let tcp_connect_ms = tcp_connected_ns as f64 / 1_000_000.0;
+    let tcp_connected_ns = monotonic_ns();
+    let tcp_connect_time_ns = tcp_connected_ns.saturating_sub(session_start_ns);
+    let tcp_connect_ms = tcp_connect_time_ns as f64 / 1_000_000.0;
     println!("   ↳ TCP conectado en {:.3}ms", tcp_connect_ms);
 
     let mut metered = MeteredStream::new(stream);
@@ -120,7 +187,10 @@ fn main() {
         while session.wants_write() {
             match session.write_tls(&mut metered) {
                 Ok(_) => {}
-                Err(e) => { eprintln!("write_tls error: {}", e); return; }
+                Err(e) => {
+                    eprintln!("write_tls error: {}", e);
+                    return;
+                }
             }
         }
 
@@ -130,10 +200,15 @@ fn main() {
 
         if session.wants_read() && !eof {
             match session.read_tls(&mut metered) {
-                Ok(0) => { eof = true; }
+                Ok(0) => {
+                    eof = true;
+                }
                 Ok(_) => {}
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(e) => { eprintln!("read_tls error: {}", e); return; }
+                Err(e) => {
+                    eprintln!("read_tls error: {}", e);
+                    return;
+                }
             }
         }
 
@@ -148,72 +223,63 @@ fn main() {
         }
     }
 
-    // KEMTLS flips rustls into "traffic" mode before the peer's Finished is
-    // processed, so we wait for one more TLS read/process cycle and only then
-    // publish the client-side "session ready" mark.
-    let bytes_read_before_ready = metered.bytes_read;
-    metered
-        .inner
-        .set_read_timeout(Some(Duration::from_secs(3)))
-        .ok();
-    while metered.bytes_read == bytes_read_before_ready {
-        match session.read_tls(&mut metered) {
-            Ok(0) => break,
-            Ok(_) => {}
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => {
-                eprintln!("❌ Timeout esperando ServerFinished");
-                return;
-            }
-            Err(e) => {
-                eprintln!("read_tls error waiting for ServerFinished: {}", e);
-                return;
-            }
-        }
-
-        if let Err(e) = session.process_new_packets() {
-            eprintln!("TLS error waiting for ServerFinished: {:?}", e);
-            return;
-        }
-    }
-
     if eof {
-        eprintln!("❌ EOF antes de recibir ServerFinished");
+        eprintln!("❌ EOF antes de completar el handshake bilateral");
         return;
     }
 
-    let session_ready_ns = session_start.elapsed().as_nanos();
+    // For mutual KEMTLS this point follows receipt and validation of
+    // ServerFinished.  For PDK, rustls has emitted ClientFinished after
+    // validating the server's Finished; the authoritative bilateral mark is
+    // written by the server, so this local mark is diagnostic only.
+    let session_ready_ns = monotonic_ns();
+    let handshake_time_ns = session_ready_ns.saturating_sub(session_start_ns);
     let protocol_handshake_ns = session_ready_ns.saturating_sub(tcp_connected_ns);
     let hs_bytes_written = metered.bytes_written;
     let hs_bytes_read = metered.bytes_read;
     let hs_bytes_total = hs_bytes_written + hs_bytes_read;
-    let session_ready_ms = session_ready_ns as f64 / 1_000_000.0;
+    let session_ready_ms = handshake_time_ns as f64 / 1_000_000.0;
     let protocol_handshake_ms = protocol_handshake_ns as f64 / 1_000_000.0;
 
     println!("✅ Sesión KEMTLS lista en {:.3}ms", session_ready_ms);
 
     if let Ok(metrics_path) = std::env::var("KEMTLS_METRICS_JSON") {
         let json = format!(
-            "{{\n  \"role\": \"client\",\n  \"tcp_connect_ms\": {:.3},\n  \"handshake_ms\": {:.3},\n  \"session_ready_ms\": {:.3},\n  \"session_start_ns\": 0,\n  \"tcp_connected_ns\": {},\n  \"session_ready_ns\": {},\n  \"handshake_time_ns\": {},\n  \"tcp_connect_time_ns\": {},\n  \"bytes_written\": {},\n  \"bytes_read\": {},\n  \"bytes_total\": {}\n}}\n",
+            "{{\n  \"role\": \"client\",\n  \"crypto_variant\": \"{}\",\n  \"clock_source\": \"CLOCK_MONOTONIC\",\n  \"clock_domain\": \"host-monotonic\",\n  \"tcp_connect_ms\": {:.3},\n  \"handshake_ms\": {:.3},\n  \"session_ready_ms\": {:.3},\n  \"session_start_ns\": {},\n  \"tcp_connected_ns\": {},\n  \"session_ready_ns\": {},\n  \"handshake_time_ns\": {},\n  \"tcp_connect_time_ns\": {},\n  \"bytes_written\": {},\n  \"bytes_read\": {},\n  \"bytes_total\": {},\n  \"session_ready_event\": \"{}\"\n}}\n",
+            crypto_variant,
             tcp_connect_ms,
             protocol_handshake_ms,
             session_ready_ms,
+            session_start_ns,
             tcp_connected_ns,
             session_ready_ns,
-            protocol_handshake_ns,
-            tcp_connected_ns,
+            handshake_time_ns,
+            tcp_connect_time_ns,
             hs_bytes_written,
             hs_bytes_read,
-            hs_bytes_total
+            hs_bytes_total,
+            if is_pdk { "ClientFinished emitted" } else { "ServerFinished validated" },
         );
-        std::fs::write(&metrics_path, json).ok();
+        if let Err(error) = write_metrics_atomic(Path::new(&metrics_path), &json) {
+            eprintln!(
+                "client metrics write failed for {}: {}",
+                metrics_path, error
+            );
+            return;
+        }
     }
 
-    session.write_all(b"HOLA KEMTLS\n").unwrap();
+    session
+        .write_all(b"HOLA KEMTLS\n")
+        .unwrap();
     while session.wants_write() {
         session.write_tls(&mut metered).ok();
     }
 
-    metered.inner.set_read_timeout(Some(std::time::Duration::from_secs(3))).ok();
+    metered
+        .inner
+        .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+        .ok();
     let mut reply = vec![0u8; 256];
     let mut n = 0;
     while !eof {
@@ -222,18 +288,45 @@ fn main() {
             Ok(_) => {
                 session.process_new_packets().ok();
                 match session.read(&mut reply) {
-                    Ok(k) if k > 0 => { n = k; break; }
+                    Ok(k) if k > 0 => {
+                        n = k;
+                        break;
+                    }
                     _ => {}
                 }
             }
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock
-                || e.kind() == io::ErrorKind::TimedOut => break,
-            Err(e) => { eprintln!("read error: {}", e); break; }
+            Err(ref e)
+                if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut =>
+            {
+                break
+            }
+            Err(e) => {
+                eprintln!("read error: {}", e);
+                break;
+            }
         }
     }
     if n > 0 {
         println!("📩 Respuesta: {}", String::from_utf8_lossy(&reply[..n]));
     }
 
-    println!("🏁 Listo. Latencia total: {:.3}ms", session_start.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "🏁 Listo. Latencia total: {:.3}ms",
+        session_start.elapsed().as_secs_f64() * 1000.0
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_pdk_variant;
+
+    #[test]
+    fn recognizes_canonical_and_historic_pdk_slugs() {
+        assert!(is_pdk_variant("kyber512-mutual-pdk"));
+        assert!(is_pdk_variant("kyber512-mutual-pdk-lo"));
+        assert!(is_pdk_variant("kyber512-pdk"));
+        assert!(is_pdk_variant("kyber512-pdk-lo"));
+        assert!(!is_pdk_variant("kyber512-mutual"));
+        assert!(!is_pdk_variant("kyber512-mutual-lo"));
+    }
 }

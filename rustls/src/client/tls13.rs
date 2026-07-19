@@ -1243,6 +1243,12 @@ impl hs::State for ExpectKEMTLSFinished {
         sess.common.record_layer.set_message_decrypter(cipher::new_tls13_read(suite, &read_key));
 
         self.handshake.print_runtime("HANDSHAKE COMPLETED");
+        // The KEMTLS state used to return a traffic state without flipping the
+        // common session flag.  That made callers read post-handshake traffic
+        // (often NewSessionTicket) before they could observe completion.  The
+        // Finished has already been verified above, so the session is now
+        // bilateral and can leave the handshake state immediately.
+        sess.common.start_traffic();
 
         Ok(self.into_expect_traffic(fin))
     }
